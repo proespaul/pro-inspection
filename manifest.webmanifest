@@ -1,0 +1,15 @@
+{
+  "name": "PRO Electrical Inspection",
+  "short_name": "PRO Inspection",
+  "description": "Electrical inspection report for insurance purposes. PRO Electrical Services.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F3F5F8",
+  "theme_color": "#1F3864",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
