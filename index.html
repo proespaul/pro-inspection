@@ -763,7 +763,6 @@ const SECTIONS = [
     "No double-tapped breakers unless listed for two conductors",
     "No breakers of a make not listed for the panel",
     "Breakers operate, no loose or damaged devices",
-    "Panel type not a recalled or problem series (Stab-Lok, Zinsco)",
     "Arc fault protection where required for the applicable code edition"]],
   ["D","Branch circuit wiring",[
     "Predominant wiring method identified and in good condition",
@@ -829,7 +828,7 @@ const S = {
   info:{}, answers:{}, ratings:{}, notes:{}, defects:{}, condition:null,
   cert:{company:"PRO Electrical Services"}, sigInsp:null, sigClient:null
 };
-const VERSION = "3.0";
+const VERSION = "3.1";
 const KEY  = "proInspectionDraft_v1";
 const RKEY = "proInspectionReports_v1";
 const MAXR = 60;
@@ -907,15 +906,35 @@ function archiveCurrent(){
    keyed by position, so anything saved under the old list has to be shifted
    down past the gap or every later answer reads against the wrong question. */
 const QSET = 2, QGONE = 2;
-function migrateAnswers(st){
-  if(!st || st.qset >= QSET) return st;
-  const a = st.answers || {}, out = {};
-  Object.keys(a).forEach(k=>{
-    const i = parseInt(k,10);
-    if(isNaN(i) || i === QGONE) return;
-    out[i > QGONE ? i-1 : i] = a[k];
+const ISET = 2, IGONE = {sec:"C", idx:6};   /* checklist item C.6 removed, C.7 becomes C.6 */
+function shiftItems(map){
+  if(!map) return map;
+  const out = {};
+  Object.keys(map).forEach(k=>{
+    const m = /^([A-G])\.(\d+)$/.exec(k);
+    if(!m || m[1] !== IGONE.sec){ out[k] = map[k]; return; }
+    const n = parseInt(m[2],10);
+    if(n === IGONE.idx) return;                       /* the removed item: drop */
+    out[n > IGONE.idx ? `${m[1]}.${n-1}` : k] = map[k];
   });
-  st.answers = out; st.qset = QSET;
+  return out;
+}
+function migrateAnswers(st){
+  if(!st) return st;
+  if(!(st.qset >= QSET)){
+    const a = st.answers || {}, out = {};
+    Object.keys(a).forEach(k=>{
+      const i = parseInt(k,10);
+      if(isNaN(i) || i === QGONE) return;
+      out[i > QGONE ? i-1 : i] = a[k];
+    });
+    st.answers = out; st.qset = QSET;
+  }
+  if(!(st.iset >= ISET)){
+    st.ratings = shiftItems(st.ratings); st.notes = shiftItems(st.notes); st.defects = shiftItems(st.defects);
+    if(st.prev){ st.prev.ratings = shiftItems(st.prev.ratings); st.prev.notes = shiftItems(st.prev.notes); }
+    st.iset = ISET;
+  }
   return st;
 }
 function load(){
@@ -1521,7 +1540,7 @@ function cloudState(){
    any leaf it did not touch is taken from the server. Where both devices
    changed the same leaf, the device syncing wins and the count is reported. */
 const BKEY = "proSyncBase_v1";
-function loadBase(){ try{ return JSON.parse(localStorage.getItem(BKEY)||"null"); }catch(e){ return null; } }
+function loadBase(){ try{ const b = JSON.parse(localStorage.getItem(BKEY)||"null"); return b ? migrateAnswers(b) : null; }catch(e){ return null; } }
 function saveBase(){ try{ localStorage.setItem(BKEY, JSON.stringify(cloudState())); }catch(e){} }
 
 /* compare without base64: photo identity is its Drive id */

@@ -3,7 +3,7 @@
    signal, so updates land on the next open; with no signal the last good copy
    is served from the cache. The app is one self-contained file, so the shell
    is just index.html. */
-const CACHE = 'pro-inspection-3.0';
+const CACHE = 'pro-inspection-3.1';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
