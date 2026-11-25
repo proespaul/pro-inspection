@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Play recording · PRO Electrical</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #ffffff; --ink: #14181f; --muted: #5d6573;
+    --accent: #d62828; --accent-ink: #ffffff; --track: #e3e6eb; --border: #e3e6eb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f1115; --card: #191c22; --ink: #eef0f3; --muted: #9aa2af; --track: #2b3039; --border: #2b3039; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--ink);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: max(24px, env(safe-area-inset-top)) 16px 24px;
+  }
+  .card {
+    width: 100%; max-width: 440px; background: var(--card);
+    border: 1px solid var(--border); border-radius: 20px;
+    padding: 28px 22px 22px; text-align: center;
+  }
+  .brand { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 26px; min-height: 1.4em; }
+  .play {
+    width: 112px; height: 112px; border-radius: 50%; border: 0;
+    background: var(--accent); color: var(--accent-ink);
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+    box-shadow: 0 6px 18px rgba(214, 40, 40, .35);
+  }
+  .play:active { transform: scale(.96); }
+  .play svg { width: 46px; height: 46px; fill: currentColor; }
+  .play[disabled] { opacity: .45; box-shadow: none; }
+  .bar { margin: 28px 0 6px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); height: 28px; }
+  .times { display: flex; justify-content: space-between; color: var(--muted); font-variant-numeric: tabular-nums; font-size: 14px; }
+  .row { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
+  .pill {
+    border: 1px solid var(--border); background: transparent; color: var(--ink);
+    border-radius: 999px; padding: 10px 16px; font: inherit; font-size: 15px; cursor: pointer;
+    text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .msg { color: var(--muted); margin-top: 18px; font-size: 14px; }
+  .msg.err { color: var(--accent); }
+  .build { color: var(--muted); font-size: 11px; margin-top: 22px; opacity: .7; }
+</style>
+</head>
+<body>
+<main class="card">
+  <p class="brand">PRO Electrical Services</p>
+  <h1 id="title">Call recording</h1>
+  <p class="sub" id="sub"></p>
+
+  <button class="play" id="play" aria-label="Play" disabled>
+    <svg id="icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+  </button>
+
+  <div class="bar">
+    <input type="range" id="seek" min="0" max="0" step="0.1" value="0" aria-label="Position" disabled>
+    <div class="times"><span id="cur">0:00</span><span id="dur">--:--</span></div>
+  </div>
+
+  <div class="row">
+    <button class="pill" id="back10" disabled>&#8634; 10 s</button>
+    <button class="pill" id="speed" disabled>1×</button>
+  </div>
+
+  <p class="msg" id="msg">Loading…</p>
+  <p class="build">build 1 · 2026-11-25</p>
+</main>
+
+<audio id="audio" preload="auto"></audio>
+
+<script>
+(function () {
+  // Only recordings from Retell (CloudFront) or Twilio are played. Anything else is refused,
+  // so this page can't be used to play someone else's file.
+  var ALLOWED = [/\.cloudfront\.net$/i, /(^|\.)retellai\.com$/i, /(^|\.)twilio\.com$/i];
+  var p = new URLSearchParams(location.search);
+  var src = p.get('u') || '';
+  var kind = (p.get('k') || '').toLowerCase();   // 'vm' = voicemail, anything else = call
+  var when = p.get('d') || '';                    // e.g. "Nov 25, 8:47 AM" — no names or numbers
+
+  var $ = function (id) { return document.getElementById(id); };
+  var audio = $('audio'), play = $('play'), icon = $('icon'), seek = $('seek'),
+      msg = $('msg'), speedBtn = $('speed'), back10 = $('back10');
+
+  $('title').textContent = kind === 'vm' ? 'Voicemail' : 'Call recording';
+  $('sub').textContent = when;
+
+  function fmt(s) {
+    if (!isFinite(s)) return '--:--';
+    s = Math.max(0, Math.floor(s));
+    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  }
+  function fail(text) { msg.textContent = text; msg.className = 'msg err'; play.disabled = true; }
+
+  var ok = false;
+  try {
+    var u = new URL(src);
+    ok = u.protocol === 'https:' && ALLOWED.some(function (re) { return re.test(u.hostname); });
+  } catch (e) { ok = false; }
+  if (!ok) { fail('This link has no recording in it.'); return; }
+
+  audio.src = src;
+  var PLAY = 'M8 5v14l11-7z', PAUSE = 'M6 5h4v14H6zm8 0h4v14h-4z';
+  function setIcon() {
+    icon.firstElementChild.setAttribute('d', audio.paused ? PLAY : PAUSE);
+    play.setAttribute('aria-label', audio.paused ? 'Play' : 'Pause');
+  }
+  function ready() {
+    [play, seek, back10, speedBtn].forEach(function (b) { b.disabled = false; });
+    if (msg.className !== 'msg err') msg.textContent = '';
+  }
+
+  audio.addEventListener('loadedmetadata', function () {
+    seek.max = isFinite(audio.duration) ? audio.duration : 0;
+    $('dur').textContent = fmt(audio.duration);
+    ready();
+  });
+  audio.addEventListener('canplay', ready);
+  audio.addEventListener('timeupdate', function () {
+    if (!seeking) seek.value = audio.currentTime;
+    $('cur').textContent = fmt(audio.currentTime);
+  });
+  audio.addEventListener('play', setIcon);
+  audio.addEventListener('pause', setIcon);
+  audio.addEventListener('ended', function () { audio.currentTime = 0; setIcon(); });
+  audio.addEventListener('error', function () {
+    fail('The recording could not be loaded. It may have expired, or there is no signal.');
+  });
+
+  play.addEventListener('click', function () {
+    if (audio.paused) audio.play().catch(function () {}); else audio.pause();
+  });
+  var seeking = false;
+  seek.addEventListener('input', function () { seeking = true; $('cur').textContent = fmt(+seek.value); });
+  seek.addEventListener('change', function () { audio.currentTime = +seek.value; seeking = false; });
+  back10.addEventListener('click', function () { audio.currentTime = Math.max(0, audio.currentTime - 10); });
+  var speeds = [1, 1.25, 1.5, 2], si = 0;
+  speedBtn.addEventListener('click', function () {
+    si = (si + 1) % speeds.length; audio.playbackRate = speeds[si];
+    speedBtn.textContent = speeds[si] + '×';
+  });
+
+  // Start playing as soon as the page opens. If the phone blocks sound until a tap,
+  // the big red button is right there.
+  audio.play().then(ready).catch(function () { msg.textContent = 'Tap play to listen.'; ready(); });
+})();
+</script>
+</body>
+</html>
